@@ -1,0 +1,113 @@
+const style = document.createElement('style');
+style.innerHTML = `
+  .tawk-chat-item {
+    background: #474747;
+    color: #fff;
+    border-radius: 5px;
+    font-size: 11px;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .tawk-message-bubble .tawk-outgoing-chat-bubble {
+    border-radius: 12px;
+    background: #64db69;
+    border-color: #64db69;
+    color: #000;
+    word-break: break-word;
+  }
+`;
+document.head.appendChild(style);
+
+// Create the new navigation element
+const newNav = document.createElement('div');
+newNav.id = "tawk-property-view-nav";
+newNav.classList.add('tawk-padding', 'tawk-flex', 'tawk-flex-middle', 'tawk-flex-center');
+newNav.innerHTML = `
+<div class="tawk-chat-item tawk-padding" style="width: 300px;">
+  <div class="tawk-flex tawk-flex-middle tawk-chat-item-content" style="height: 100%; justify-content: center;">
+    <div class="tawk-position-relative">
+      <span class="flag-square tawk-flex-none tawk-flag flag-id"></span>
+      <span class="tawk-status-badge online"></span>
+    </div>
+    <div class="tawk-margin-left tawk-margin-auto-right tawk-text-truncate tawk-text-uppercase tawk-text-regular-1 tawk-text-white tawk-flex-1">
+      <div class="tawk-text-truncate">
+        <input type="number" id="chatInput" class="tawk-input" placeholder="Enter a number (1-9)" min="1" max="9" style="padding: 8px 12px; width: 100%; background-color: #474747; color: white; border: none; border-radius: 20px; height: 30px;">
+      </div>
+    </div>
+    <div class="tawk-flex-none tawk-margin-left">
+      <div class="tawk-flex tawk-flex-right" style="width: 120px;">
+        <span class="tawk-text-truncate tawk-text-uppercase tawk-text-center" style="font-size: 12px; padding: 6px 12px; background: rgb(79, 79, 79); border-radius: 10px; cursor: pointer;" id="submitButton">Submit</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+`;
+
+// Menargetkan elemen tawk-admin-nav dan menambahkannya setelah elemen tersebut
+const adminNavElement = document.getElementById('tawk-admin-nav');
+if (adminNavElement) {
+    adminNavElement.parentNode.insertBefore(newNav, adminNavElement.nextSibling);
+}
+
+// Event listener untuk submit button
+document.getElementById('submitButton').addEventListener('click', () => {
+  let inputNumber = parseInt(document.getElementById('chatInput').value);
+  console.log('Input Number:', inputNumber);  // Log input untuk pengecekan
+
+  // Validasi input angka antara 1 sampai 9
+  if (inputNumber >= 1 && inputNumber <= 9) {
+      // Menampilkan alert notifikasi
+      alert(`Auto Approve Chat akan dilakukan sebanyak ${inputNumber}`);
+
+      let joinButtonClickedCount = 0;
+
+      const interval = setInterval(() => {
+          // Cek jika inputNumber sudah 0, hentikan interval
+          if (inputNumber <= 0) {
+              console.log('Input number is 0, stopping...');
+              clearInterval(interval);
+              return;  // Hentikan interval jika inputNumber sudah 0
+          }
+
+          const chatItem = document.querySelector('.tawk-chat-item.unseen.need-attn');
+          
+          if (chatItem) {
+              chatItem.click();
+              console.log('Chat item clicked!');
+              
+              const button = document.querySelector('.tawk-button.tawk-button-solid-primary .tawk-icon-join-conversation');
+              
+              if (button) {
+                  button.click();
+                  console.log('Join button clicked!');
+                  
+                  const buttonText = button.textContent.trim();
+                  if (buttonText === 'Join') {
+                      button.textContent = 'Join Chat';
+                      console.log('Button text changed to "Join Chat"');
+                  }
+                  
+                  joinButtonClickedCount++;
+                  
+                  // Update input value to reflect remaining clicks
+                  inputNumber--;
+                  document.getElementById('chatInput').value = inputNumber;
+                  
+                  if (joinButtonClickedCount === parseInt(document.getElementById('chatInput').value)) {
+                      console.log('Join button clicked ' + joinButtonClickedCount + ' times, stopping...');
+                      clearInterval(interval);
+                  }
+              } else {
+                  console.log('Join button not found yet, waiting for chat item...');
+              }
+          } else {
+              console.log('Waiting for chat item...');
+          }
+      }, 500);
+  } else {
+      alert('Please enter a number between 1 and 9.');
+  }
+});
+
