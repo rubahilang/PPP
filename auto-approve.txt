@@ -1,3 +1,5 @@
+
+// Create the style element to update the background color
 const style = document.createElement('style');
 style.innerHTML = `
   .tawk-chat-item {
@@ -7,6 +9,9 @@ style.innerHTML = `
     font-size: 11px;
     cursor: pointer;
     position: relative;
+  }
+  .tawk-chat-item:hover {
+    background: #474747;
   }
 
   .tawk-message-bubble .tawk-outgoing-chat-bubble {
@@ -105,7 +110,7 @@ document.getElementById('submitButton').addEventListener('click', () => {
           } else {
               console.log('Waiting for chat item...');
           }
-      }, 500);
+      }, 1000); // Periksa setiap 1 detik
   } else {
       alert('Please enter a number between 1 and 9.');
   }
