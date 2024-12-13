@@ -1225,7 +1225,7 @@ async def index_domains(update: Update, context: CallbackContext) -> None:
 # Fungsi utama
 def main() -> None:
     # Inisialisasi bot dengan token
-    application = Application.builder().token('8138717043:AAGeOpXpUXgoFUZSeMdXymWMqSDqDSgtYXc').build()
+    application = Application.builder().token('').build()
 
     # Menjadwalkan pemeriksaan domain untuk setiap pengguna
     schedule_jobs(application)
