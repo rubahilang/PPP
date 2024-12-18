@@ -728,6 +728,7 @@ def split_message(message: str, max_length: int = 4096) -> List[str]:
     messages.append(message)
     return messages
 
+# Handler untuk Perintah /rank
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text("Gunakan format: /rank {keyword}\nContoh: /rank AI tools")
@@ -752,7 +753,7 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     headers = {
         'accept': "application/json",
         'content-type': "application/json",
-        'authorization': "Bearer RO7H9zb9tea0RTgTloYBqNMqsT7qGM5ygQo3biCwGNPT4ubUMoBbPpcwla63"
+        'authorization': "Bearer 63664a65e5615342dea5b731db1fd12858aac25f427a54c5114a8f041df8c07d"
     }
 
     try:
@@ -795,6 +796,13 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text(f"Gagal mengambil data. Status Code: {response.status_code}\nResponse: {response.text}")
     except Exception as e:
         await update.message.reply_text(f"Terjadi kesalahan: {e}")
+
+# Handler untuk Perintah /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Halo! Saya adalah bot pengecek ranking.\n"
+        "Gunakan perintah /rank <keyword> untuk memulai pengecekan."
+    )
 
 # Handler Global untuk Error
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -949,7 +957,10 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
         
         # Cek apakah user ter-banned
         if not await is_user(user_id):
-            await update.message.reply_text("🤖 Anda Tidak Memiliki Akses Untuk Memakai Bot Ini 🤖 \n\n 💬 Silahkan Hubungi Developer Dengan Command /chat 💬")
+            await update.message.reply_text(
+                "🤖 Anda Tidak Memiliki Akses Untuk Memakai Bot Ini 🤖 \n\n"
+                "💬 Silahkan Hubungi Developer Dengan Command /chat 💬"
+            )
             return
         
         if context.args:
@@ -964,7 +975,7 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
 
             # Ganti spasi antar domain dengan koma
             domains = domains.replace(' ', ',')
-            new_domains = domains.split(',')
+            new_domains = [domain.strip() for domain in domains.split(',') if domain.strip()]
 
             try:
                 if add_to_all_files:
@@ -985,23 +996,41 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
 
                         if unique_domains:
                             with open(file_name, 'a') as file:
-                                if existing_domains:
+                                if existing_domains and existing_domains != ['']:
                                     file.write(f',{",".join(unique_domains)}')
                                 else:
                                     file.write(f'{",".join(unique_domains)}')
 
-                    await update.message.reply_text(f"Domain(s) {','.join(new_domains)} telah ditambahkan ke semua User. 🎉")
+                    await update.message.reply_text(f"Domain(s) {', '.join(new_domains)} telah ditambahkan ke semua User. 🎉")
                 
                 else:
                     # Menambahkan domain hanya ke file user_id.txt
                     try:
                         with open(file_name, 'r') as file:
                             existing_domains = file.read().strip().split(',')
+                            existing_domains = [domain.strip() for domain in existing_domains if domain.strip()]
                     except FileNotFoundError:
                         existing_domains = []
 
+                    # Cek jumlah domain yang sudah ada
+                    if len(existing_domains) >= 3:
+                        await update.message.reply_text(
+                            f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
+                            f"Silahkan hapus salah satu domain: {', '.join(existing_domains)}"
+                        )
+                        return
+
                     # Filter hanya domain yang belum ada
                     unique_domains = [domain for domain in new_domains if domain not in existing_domains]
+
+                    # Cek apakah penambahan akan melebihi batas 3 domain
+                    if len(existing_domains) + len(unique_domains) > 3:
+                        allowed_add = 3 - len(existing_domains)
+                        unique_domains = unique_domains[:allowed_add]
+                        await update.message.reply_text(
+                            f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
+                            f"Sekarang hanya dapat menambahkan {allowed_add} domain: {', '.join(unique_domains)}"
+                        )
 
                     if unique_domains:
                         with open(file_name, 'a') as file:
@@ -1010,9 +1039,11 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
                             else:
                                 file.write(f'{",".join(unique_domains)}')
 
-                        await update.message.reply_text(f"Domain(s) {','.join(unique_domains)} telah ditambahkan ke list Anda. 🎉")
+                        await update.message.reply_text(
+                            f"Domain(s) {', '.join(unique_domains)} telah ditambahkan ke list Anda. 🎉"
+                        )
                     else:
-                        await update.message.reply_text("Semua domain yang Anda masukkan sudah ada dalam list Anda. 😕")
+                        await update.message.reply_text("Semua domain yang Anda masukkan sudah ada dalam list Anda atau melebihi batas maksimal. 😕")
             
             except Exception as e:
                 await update.message.reply_text(f"Terjadi kesalahan: {e} 😔")
@@ -1225,7 +1256,7 @@ async def index_domains(update: Update, context: CallbackContext) -> None:
 # Fungsi utama
 def main() -> None:
     # Inisialisasi bot dengan token
-    application = Application.builder().token('').build()
+    application = Application.builder().token('7901630582:AAEmlTcXKYg1UxUYkYlxXA5VbDlVd8Ezp_0').build()
 
     # Menjadwalkan pemeriksaan domain untuk setiap pengguna
     schedule_jobs(application)
