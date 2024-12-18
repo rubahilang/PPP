@@ -12,7 +12,7 @@ from typing import List, Dict, Optional
 import httpx
 
 USAGE_FILE = 'usage_counts.json'
-ADMIN_FILE = 'admin.md'
+ADMIN_FILE = 'spesial.md'
 BANNED_FILE = 'user.md'
 
 
@@ -938,6 +938,7 @@ async def banned(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("Harap masukkan ID yang ingin Ditambahkan.")
 
+
 # Fungsi untuk menangani perintah /unbanned
 async def unbanned(update: Update, context: CallbackContext) -> None:
     user_id = update.message.from_user.id  # Mendapatkan user_id pengirim
@@ -1374,6 +1375,73 @@ async def index_domains(update: Update, context: CallbackContext) -> None:
     else:
         await update.message.reply_text("Perintah tidak valid! ❌")
 
+def load_spesial_list() -> List[str]:
+    """Muat daftar user_id spesial dari spesial.md."""
+    SPESIAL_FILE = 'spesial.md'
+    if not os.path.exists(SPESIAL_FILE):
+        return []
+    with open(SPESIAL_FILE, 'r') as file:
+        spesial_users = [line.strip() for line in file if line.strip()]
+    return spesial_users
+
+# Global Variable untuk Spesial List
+SPESIAL_LIST: List[str] = []
+
+def load_spesials() -> None:
+    """Muat daftar spesial ke dalam SPESIAL_LIST."""
+    global SPESIAL_LIST
+    SPESIAL_LIST = load_spesial_list()
+
+# Fungsi untuk memeriksa apakah pengguna adalah spesial
+def is_spesial(user_id: int) -> bool:
+    """Cek apakah user_id ada di spesial.md."""
+    return str(user_id) in SPESIAL_LIST
+
+# Fungsi untuk menambahkan ID ke file spesial.md
+async def add_to_spesial(target_id: str) -> None:
+    SPESIAL_FILE = 'spesial.md'
+    if not os.path.exists(SPESIAL_FILE):
+        with open(SPESIAL_FILE, 'w') as file:
+            pass  # Membuat file jika belum ada
+    with open(SPESIAL_FILE, 'a') as file:
+        file.write(f'{target_id}\n')
+    # Perbarui SPESIAL_LIST setelah menambahkan
+    SPESIAL_LIST.append(target_id)
+
+# Fungsi untuk menangani perintah /spesial
+async def spesial(update: Update, context: CallbackContext) -> None:
+    if update.message:
+        user_id = update.message.from_user.id  # Mendapatkan user_id pengirim
+        
+        # Cek apakah pengirim adalah admin
+        if not is_admin(user_id):
+            await update.message.reply_text("Anda tidak memiliki akses untuk menggunakan perintah ini.")
+            return
+        
+        if context.args:
+            target_user_id = context.args[0]
+            
+            # Validasi apakah target_user_id adalah angka
+            if not target_user_id.isdigit():
+                await update.message.reply_text("Harap masukkan user_id yang valid (angka).")
+                return
+            
+            # Cek apakah user_id sudah ada di spesial
+            if is_spesial(int(target_user_id)):
+                await update.message.reply_text(f"User ID `{target_user_id}` sudah ada dalam daftar spesial.")
+                return
+            
+            try:
+                # Tambahkan user_id ke spesial.md
+                await add_to_spesial(target_user_id)
+                await update.message.reply_text(f"✅ User ID `{target_user_id}` telah ditambahkan ke daftar spesial.")
+            except Exception as e:
+                await update.message.reply_text(f"Terjadi kesalahan saat menambahkan user ID: {e} 😔")
+        else:
+            await update.message.reply_text("Gunakan format: /spesial <user_id>\nContoh: /spesial 123456789")
+    else:
+        await update.message.reply_text("Pesan tidak valid! ❌")
+
 # Fungsi utama
 def main() -> None:
     # Inisialisasi bot dengan token
@@ -1410,6 +1478,7 @@ def main() -> None:
     application.add_handler(CommandHandler("add_to", add_to))
     application.add_handler(CommandHandler("report", report_command))
     application.add_handler(CommandHandler("index", index_domains))
+    application.add_handler(CommandHandler("spesial", spesial))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, remove_domain))  # Untuk konfirmasi penghapusan
 
     # Menjalankan bot
