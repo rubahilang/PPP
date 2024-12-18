@@ -8,8 +8,13 @@ import requests
 from bs4 import BeautifulSoup
 import shutil
 import json
-from typing import List
+from typing import List, Dict, Optional
 import httpx
+
+USAGE_FILE = 'usage_counts.json'
+ADMIN_FILE = 'admin.md'
+BANNED_FILE = 'user.md'
+
 
 # Menambahkan job queue untuk menjalankan pemeriksaan setiap 10 menit
 def schedule_jobs(application: Application) -> None:
@@ -951,9 +956,103 @@ async def unbanned(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("Harap masukkan ID yang ingin dihapus dari user.")
 
 # Fungsi untuk menambahkan domain ke file khusus pengguna
+# Fungsi untuk memeriksa apakah pengguna adalah admin
+def load_admin_list() -> List[str]:
+    if not os.path.exists(ADMIN_FILE):
+        return []
+    with open(ADMIN_FILE, 'r') as file:
+        admins = [line.strip() for line in file if line.strip()]
+    return admins
+
+# Fungsi untuk memeriksa apakah pengguna ter-banned
+async def is_user(user_id: int) -> bool:
+    """Cek apakah user_id ada di user.md (banned users)."""
+    try:
+        with open(BANNED_FILE, 'r') as banned_file:
+            banned_users = banned_file.read().strip().splitlines()
+            return str(user_id) in banned_users
+    except FileNotFoundError:
+        # Jika file user.md tidak ditemukan, anggap tidak ada user yang ter-banned
+        return False
+
+# Fungsi untuk memuat hitungan penggunaan
+def load_usage_counts() -> Dict[str, Dict[str, int]]:
+    if not os.path.exists(USAGE_FILE):
+        return {}
+    with open(USAGE_FILE, 'r') as file:
+        try:
+            return json.load(file)
+        except json.JSONDecodeError:
+            return {}
+
+# Fungsi untuk menyimpan hitungan penggunaan
+def save_usage_counts(data: Dict[str, Dict[str, int]]) -> None:
+    with open(USAGE_FILE, 'w') as file:
+        json.dump(data, file, indent=4)
+
+# Fungsi untuk memeriksa dan meningkatkan hitungan penggunaan
+def check_and_increment_usage(user_id: int, feature: str, max_usage: int) -> bool:
+    usage_data = load_usage_counts()
+    user_id_str = str(user_id)
+    
+    if user_id_str not in usage_data:
+        usage_data[user_id_str] = {}
+    
+    if feature not in usage_data[user_id_str]:
+        usage_data[user_id_str][feature] = 0
+    
+    if usage_data[user_id_str][feature] >= max_usage:
+        return False  # Sudah mencapai batas
+    
+    usage_data[user_id_str][feature] += 1
+    save_usage_counts(usage_data)
+    return True
+
+# Fungsi untuk menambahkan ID ke file admin.md
+async def add_to_admin(target_id: str) -> None:
+    with open(ADMIN_FILE, 'a') as admin_file:
+        admin_file.write(f'{target_id}\n')
+
+# Fungsi untuk menghapus ID dari file admin.md
+async def remove_from_admin(target_id: str) -> None:
+    try:
+        with open(ADMIN_FILE, 'r') as admin_file:
+            admin_users = admin_file.read().strip().splitlines()
+        admin_users = [id for id in admin_users if id != target_id]
+        with open(ADMIN_FILE, 'w') as admin_file:
+            admin_file.write("\n".join(admin_users))
+    except FileNotFoundError:
+        pass  # File tidak ada, tidak perlu diproses lebih lanjut
+
+# Fungsi untuk menambahkan ID ke file user.md (banned users)
+async def add_to_banned(target_id: str) -> None:
+    with open(BANNED_FILE, 'a') as banned_file:
+        banned_file.write(f'{target_id}\n')
+
+# Fungsi untuk menghapus ID dari file user.md (banned users)
+async def remove_from_banned(target_id: str) -> None:
+    try:
+        with open(BANNED_FILE, 'r') as banned_file:
+            banned_users = banned_file.read().strip().splitlines()
+        banned_users = [id for id in banned_users if id != target_id]
+        with open(BANNED_FILE, 'w') as banned_file:
+            banned_file.write("\n".join(banned_users))
+    except FileNotFoundError:
+        pass  # File tidak ada, tidak perlu diproses lebih lanjut
+
+# Fungsi untuk memuat daftar admin (dari cache untuk efisiensi)
+ADMIN_LIST: List[str] = []
+
+def load_admins() -> None:
+    global ADMIN_LIST
+    ADMIN_LIST = load_admin_list()
+
+# Fungsi untuk menambahkan domain ke file khusus pengguna
 async def add_domain(update: Update, context: CallbackContext) -> None:
     if update.message:
-        user_id = update.message.from_user.id  # Mendapatkan user_id pengirim
+        user = update.message.from_user
+        user_id: int = user.id  # Mendapatkan user_id pengirim
+        username: Optional[str] = user.username.lower() if user.username else None  # Mendapatkan username pengirim (jika ada)
         
         # Cek apakah user ter-banned
         if not await is_user(user_id):
@@ -963,24 +1062,37 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
             )
             return
         
+        # Tentukan apakah pengguna adalah admin
+        is_admin: bool = str(user_id) in ADMIN_LIST
+        
         if context.args:
+            # Cek dan tingkatkan hitungan penggunaan jika bukan admin
+            if not is_admin:
+                FEATURE = 'add_domain'
+                MAX_USAGE = 5  # Batas penggunaan dalam Mode Trial
+                if not check_and_increment_usage(user_id, FEATURE, MAX_USAGE):
+                    await update.message.reply_text(
+                        "Dalam Mode Trial Hanya Dapat Memakai Fitur Ini Sebanyak 5x!"
+                    )
+                    return
+            
             # Gabungkan semua argumen yang dimasukkan oleh user
-            domains = " ".join(context.args)  # Gabungkan menjadi satu string
-            file_name = f'{user_id}.txt'  # Nama file berdasarkan user_id
+            domains_str: str = " ".join(context.args)  # Gabungkan menjadi satu string
+            file_name: str = f'{user_id}.txt'  # Nama file berdasarkan user_id
 
             # Memeriksa apakah argumen terakhir adalah '*'
-            add_to_all_files = context.args[-1] == '*'  
+            add_to_all_files: bool = context.args[-1] == '*'  
             if add_to_all_files:
-                domains = " ".join(context.args[:-1])  # Hilangkan '*' dari daftar domain yang akan ditambahkan
+                domains_str = " ".join(context.args[:-1])  # Hilangkan '*' dari daftar domain yang akan ditambahkan
 
             # Ganti spasi antar domain dengan koma
-            domains = domains.replace(' ', ',')
-            new_domains = [domain.strip() for domain in domains.split(',') if domain.strip()]
+            domains_str = domains_str.replace(' ', ',')
+            new_domains: List[str] = [domain.strip() for domain in domains_str.split(',') if domain.strip()]
 
             try:
                 if add_to_all_files:
                     # Menambahkan domain ke semua file .txt di direktori
-                    txt_files = [f for f in os.listdir('.') if f.endswith('.txt')]
+                    txt_files: List[str] = [f for f in os.listdir('.') if f.endswith('.txt')]
 
                     if not txt_files:
                         await update.message.reply_text("Tidak ada User ditemukan.")
@@ -989,14 +1101,14 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
                     for file_name in txt_files:
                         # Membaca file dan menambahkan domain baru
                         with open(file_name, 'r') as file:
-                            existing_domains = file.read().strip().split(',')
+                            existing_domains: List[str] = [domain.strip() for domain in file.read().strip().split(',') if domain.strip()]
 
                         # Menambahkan domain baru yang belum ada
-                        unique_domains = [domain for domain in new_domains if domain not in existing_domains]
+                        unique_domains: List[str] = [domain for domain in new_domains if domain not in existing_domains]
 
                         if unique_domains:
                             with open(file_name, 'a') as file:
-                                if existing_domains and existing_domains != ['']:
+                                if existing_domains:
                                     file.write(f',{",".join(unique_domains)}')
                                 else:
                                     file.write(f'{",".join(unique_domains)}')
@@ -1007,30 +1119,33 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
                     # Menambahkan domain hanya ke file user_id.txt
                     try:
                         with open(file_name, 'r') as file:
-                            existing_domains = file.read().strip().split(',')
-                            existing_domains = [domain.strip() for domain in existing_domains if domain.strip()]
+                            existing_domains: List[str] = [domain.strip() for domain in file.read().strip().split(',') if domain.strip()]
                     except FileNotFoundError:
                         existing_domains = []
 
-                    # Cek jumlah domain yang sudah ada
-                    if len(existing_domains) >= 3:
-                        await update.message.reply_text(
-                            f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
-                            f"Silahkan hapus salah satu domain: {', '.join(existing_domains)}"
-                        )
-                        return
+                    if not is_admin:
+                        # Cek jumlah domain yang sudah ada
+                        if len(existing_domains) >= 3:
+                            await update.message.reply_text(
+                                f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
+                                f"Silahkan hapus salah satu domain: {', '.join(existing_domains)}"
+                            )
+                            return
 
-                    # Filter hanya domain yang belum ada
-                    unique_domains = [domain for domain in new_domains if domain not in existing_domains]
+                        # Filter hanya domain yang belum ada
+                        unique_domains = [domain for domain in new_domains if domain not in existing_domains]
 
-                    # Cek apakah penambahan akan melebihi batas 3 domain
-                    if len(existing_domains) + len(unique_domains) > 3:
-                        allowed_add = 3 - len(existing_domains)
-                        unique_domains = unique_domains[:allowed_add]
-                        await update.message.reply_text(
-                            f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
-                            f"Sekarang hanya dapat menambahkan {allowed_add} domain: {', '.join(unique_domains)}"
-                        )
+                        # Cek apakah penambahan akan melebihi batas 3 domain
+                        if len(existing_domains) + len(unique_domains) > 3:
+                            allowed_add = 3 - len(existing_domains)
+                            unique_domains = unique_domains[:allowed_add]
+                            await update.message.reply_text(
+                                f"Dalam Mode Trial Hanya Dapat Menambahkan MAX 3 domain! "
+                                f"Sekarang hanya dapat menambahkan {allowed_add} domain: {', '.join(unique_domains)}"
+                            )
+                    else:
+                        # Jika admin, tidak ada batasan
+                        unique_domains = [domain for domain in new_domains if domain not in existing_domains]
 
                     if unique_domains:
                         with open(file_name, 'a') as file:
@@ -1039,18 +1154,24 @@ async def add_domain(update: Update, context: CallbackContext) -> None:
                             else:
                                 file.write(f'{",".join(unique_domains)}')
 
-                        await update.message.reply_text(
-                            f"Domain(s) {', '.join(unique_domains)} telah ditambahkan ke list Anda. 🎉"
-                        )
+                        if not is_admin:
+                            await update.message.reply_text(
+                                f"Domain(s) {', '.join(unique_domains)} telah ditambahkan ke list Anda. 🎉"
+                            )
+                        else:
+                            await update.message.reply_text(
+                                f"Domain(s) {', '.join(unique_domains)} telah ditambahkan ke list Anda tanpa batasan. 🎉"
+                            )
                     else:
-                        await update.message.reply_text("Semua domain yang Anda masukkan sudah ada dalam list Anda atau melebihi batas maksimal. 😕")
+                        if not is_admin:
+                            await update.message.reply_text("Semua domain yang Anda masukkan sudah ada dalam list Anda atau melebihi batas maksimal. 😕")
+                        else:
+                            await update.message.reply_text("Semua domain yang Anda masukkan sudah ada dalam list Anda. 😕")
             
             except Exception as e:
                 await update.message.reply_text(f"Terjadi kesalahan: {e} 😔")
         else:
             await update.message.reply_text("Harap masukkan domain yang ingin ditambahkan setelah /add. 💡")
-    else:
-        await update.message.reply_text("Pesan tidak valid! ❌")
 
 # Fungsi untuk memindahkan file ke folder /trash
 async def move(update: Update, context: CallbackContext) -> None:
@@ -1256,7 +1377,7 @@ async def index_domains(update: Update, context: CallbackContext) -> None:
 # Fungsi utama
 def main() -> None:
     # Inisialisasi bot dengan token
-    application = Application.builder().token('7901630582:AAEmlTcXKYg1UxUYkYlxXA5VbDlVd8Ezp_0').build()
+    application = Application.builder().token('7657800138:AAESC3n08oyC2AqHFn3oxa6qWInprwKADLo').build()
 
     # Menjadwalkan pemeriksaan domain untuk setiap pengguna
     schedule_jobs(application)
